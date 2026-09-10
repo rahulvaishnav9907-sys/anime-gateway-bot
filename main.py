@@ -12,7 +12,6 @@ UPSTASH_URL = os.getenv("UPSTASH_REDIS_REST_URL", "https://secure-coyote-163116.
 UPSTASH_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "ggAAAAAAAn0sAAIgcDJpchU4PqQmTDdyoxZbHFf2T4GK4bVAO_Mfumr2wKYbnA").strip()
 OWNER_ID = os.getenv("OWNER_CHAT_ID", "").strip()
 EVACUATE_SECRET = os.getenv("EVACUATE_SECRET", "AnimeEvacuationKey2026").strip()
-GATEWAY_WEBHOOK_SECRET = os.getenv("GATEWAY_WEBHOOK_SECRET", "GatewaySecret2026").strip()
 
 BASE_URL = f"https://api.telegram.org/bot{GATEWAY_TOKEN}"
 
@@ -31,9 +30,7 @@ def redis_command(command_list):
         return None
 
 def save_member(user_id, first_name, username):
-    # Add to main unique set
     redis_command(["SADD", "anime_members_list", str(user_id)])
-    # Save user details
     user_data = json.dumps({
         "first_name": first_name or "",
         "username": f"@{username}" if username else "None",
@@ -73,10 +70,6 @@ def home():
 
 @app.route("/gateway-webhook", methods=["POST"])
 def gateway_webhook():
-    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-    if secret != GATEWAY_WEBHOOK_SECRET:
-        return "Unauthorized", 403
-
     update = request.get_json(silent=True)
     if not update:
         return "No payload", 400
@@ -90,16 +83,13 @@ def gateway_webhook():
         username = user.get("username", "")
         chat_id = cjr.get("chat", {}).get("id")
 
-        # 1. Silently save to database
         save_member(user_id, first_name, username)
 
-        # 2. Instant Auto-Approve
         try:
             requests.post(f"{BASE_URL}/approveChatJoinRequest", json={"chat_id": chat_id, "user_id": int(user_id)}, timeout=8)
         except Exception:
             pass
 
-        # 3. Welcome DM to establish permanent bot contact
         welcome_text = (
             f"🎌 *Welcome to Anime Nation, {first_name}!* 🎌\n\n"
             "Aapki join request approve ho chuki hai.\n\n"
@@ -116,7 +106,6 @@ def gateway_webhook():
         username = msg["from"].get("username", "")
         text = msg["text"].strip()
 
-        # Silently capture every user who interacts
         save_member(chat_id, first_name, username)
 
         if text.startswith("/start"):
@@ -137,7 +126,7 @@ def gateway_webhook():
             send_telegram(chat_id, welcome_msg, menu_keyboard)
 
         elif text.startswith("/count"):
-            if chat_id == str(OWNER_ID):
+            if OWNER_ID and chat_id == str(OWNER_ID):
                 total = get_total_members()
                 send_telegram(chat_id, f"📊 *Total Database Audience:* `{total}` members saved.")
 
@@ -180,7 +169,6 @@ def trigger_evacuate():
     sent_count = 0
     failed_count = 0
 
-    # Safe rate-limited broadcasting (20 msg/sec to prevent bot bans)
     for u_id in members:
         try:
             r = requests.post(
@@ -210,4 +198,4 @@ def trigger_evacuate():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
-
+        
